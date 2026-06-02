@@ -31,21 +31,25 @@ public:
 
     uint8_t GroupNum;
     uint32_t EEPROM_ADDR_START_ADDRESS;
-
-    void init(uint8_t groupNum, uint32_t eeprom_addr_start_address);
+    uint8_t led_dimming_now;
+    uint8_t isLedTopDimming;
+    uint32_t led_power_count_now;
+    void init(uint8_t groupNum, uint32_t eeprom_addr_start_address,uint8_t led_max_power);
     GROUP(/* args */);
     ~GROUP();
 };
-void GROUP::init(uint8_t groupNum, uint32_t eeprom_addr_start_address)
+void GROUP::init(uint8_t groupNum, uint32_t eeprom_addr_start_address,uint8_t led_max_power)
 {
     GroupNum = groupNum;
     EEPROM_ADDR_START_ADDRESS = eeprom_addr_start_address;
-    key1.init(KEY_ONE_ESPRESSO, 1, groupNum, eeprom_addr_start_address);
-    key2.init(KEY_TWO_ESPRESSO, 2, groupNum, eeprom_addr_start_address + 32);
-    key3.init(KEY_ONE_COFFEE, 3, groupNum, eeprom_addr_start_address + 64);
-    key4.init(KEY_TWO_COFFEE, 4, groupNum, eeprom_addr_start_address + 96);
-    key5.init(KEY_MANUAL, 5, groupNum, eeprom_addr_start_address + 128);
-    key6.init(KEY_HOTWATER, 6, groupNum, eeprom_addr_start_address + 160);
+    key1.init(KEY_ONE_ESPRESSO, 1, groupNum, eeprom_addr_start_address,led_max_power);
+    key2.init(KEY_TWO_ESPRESSO, 2, groupNum, eeprom_addr_start_address + 32,led_max_power);
+    key3.init(KEY_ONE_COFFEE, 3, groupNum, eeprom_addr_start_address + 64,led_max_power);
+    key4.init(KEY_TWO_COFFEE, 4, groupNum, eeprom_addr_start_address + 96,led_max_power);
+    key5.init(KEY_MANUAL, 5, groupNum, eeprom_addr_start_address + 128,led_max_power);
+    key6.init(KEY_HOTWATER, 6, groupNum, eeprom_addr_start_address + 160,led_max_power);
+
+
 }
 GROUP::GROUP(/* args */)
 {

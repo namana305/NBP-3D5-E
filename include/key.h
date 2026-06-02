@@ -34,14 +34,14 @@ public:
     uint32_t DATA_TOTAL_PULSE;
     float DATA_TOTAL_ML;
     uint32_t DATA_HOTWATER_DISPENSING_TIME;
-    void init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address);
+    void init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint8_t led_max_power);
     void loadDataFromEEPROM();
     void saveDataToEEPROM();
 
     KEY();
     ~KEY();
 };
-void KEY::init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address)
+void KEY::init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint8_t led_max_power)
 {
     Type = type;
     Num = num;
@@ -54,6 +54,7 @@ void KEY::init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_a
     EEPROM_ADDR_TOTAL_PULSE = eeprom_addr_start_address + 16;
     EEPROM_ADDR_TOTAL_ML = eeprom_addr_start_address + 20;
     EEPROM_ADDR_HOTWATER_DISPENSING_TIME = eeprom_addr_start_address + 24;
+    ledPower=led_max_power;
 }
 KEY::KEY()
 {

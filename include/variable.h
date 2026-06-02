@@ -10,64 +10,22 @@
 #define SETUP_WATER_STATE 3
 #define CLEANING_SATE 4
 #define TRANFERRING_DATA_STATE 5
-
+#define FILLING_STATE 6
 // config key
 
-#define KEYPORT DDRF
-#define KEY1 (uint8_t)23U // A5
-#define KEY2 (uint8_t)22U // A4
-#define KEY3 (uint8_t)21U // A3
-#define KEY4 (uint8_t)20U // A2
-#define KEY5 (uint8_t)19U // A1
-#define KEY6 (uint8_t)18U // A0
 // config led
-#define GR1_LED1_PORT _SFR_IO8(0x0F)
-#define GR1_LED1_PIN 0
-#define GR1_LED2_PORT _SFR_IO8(0x0F)
-#define GR1_LED2_PIN 1
-#define GR1_LED3_PORT _SFR_IO8(0x0F)
-#define GR1_LED3_PIN 4
-#define GR1_LED4_PORT _SFR_IO8(0x0F)
-#define GR1_LED4_PIN 5
-#define GR1_LED5_PORT _SFR_IO8(0x0F)
-#define GR1_LED5_PIN 6
-#define GR1_LED6_PORT _SFR_IO8(0x0F)
-#define GR1_LED6_PIN 7
 
-#define GR2_LED1_PORT _SFR_IO8(0x0F)
-#define GR2_LED1_PIN 0
-#define GR2_LED2_PORT _SFR_IO8(0x0F)
-#define GR2_LED2_PIN 1
-#define GR2_LED3_PORT _SFR_IO8(0x0F)
-#define GR2_LED3_PIN 4
-#define GR2_LED4_PORT _SFR_IO8(0x0F)
-#define GR2_LED4_PIN 5
-#define GR2_LED5_PORT _SFR_IO8(0x0F)
-#define GR2_LED5_PIN 6
-#define GR2_LED6_PORT _SFR_IO8(0x0F)
-#define GR2_LED6_PIN 7
-
-#define GR3_LED1_PORT _SFR_IO8(0x0F)
-#define GR3_LED1_PIN 0
-#define GR3_LED2_PORT _SFR_IO8(0x0F)
-#define GR3_LED2_PIN 1
-#define GR3_LED3_PORT _SFR_IO8(0x0F)
-#define GR3_LED3_PIN 4
-#define GR3_LED4_PORT _SFR_IO8(0x0F)
-#define GR3_LED4_PIN 5
-#define GR3_LED5_PORT _SFR_IO8(0x0F)
-#define GR3_LED5_PIN 6
-#define GR3_LED6_PORT _SFR_IO8(0x0F)
-#define GR3_LED6_PIN 7
-
-#define FREE_LED_OFF 0
-#define FREE_LED_ON 1
 #define TRANSISTOR_GROUP1_POS 0
 #define TRANSISTOR_GROUP2_POS 6
 #define TRANSISTOR_GROUP3_POS 7
-
-#define LED_WATER_LEVEL_PORT _SFR_IO8(0x09)
-#define LED_WATER_LEVEL_PIN 0
+//config ev
+#define RELAY_PUMP 1
+#define RELAY_EVGR1 2
+#define RELAY_EVGR2 3
+#define RELAY_EVGR3 4
+#define RELAY_RISC 5
+#define RELAY_EVTEA 6
+#define RELAY_EVFILL 7 
 // config expand IO
 #define T_SPI 0
 #define T_SHIFTOUT 1

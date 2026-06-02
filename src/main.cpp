@@ -4,6 +4,7 @@
 #include "machine.h"
 // put function declarations here:
 uint32_t ms_now;
+uint32_t start_setup_ms;
 machine VELO;
 
 bool led_Run_state = false;
@@ -13,6 +14,7 @@ void start_extracting(uint8_t group, uint8_t key);
 void stop_extracting(uint8_t group, uint8_t key);
 void start_hotwater_dispensing(uint8_t group);
 void stop_hotwater_dispensing(uint8_t group);
+void stop_pump();
 void setup()
 {
   // put your setup code here, to run once:
@@ -28,141 +30,189 @@ void setup()
   digitalWrite(EXPANDIO_CLEAR_PIN, HIGH);
   delay(1000);
   digitalWrite(EXPANDIO_ENABLE_PIN, LOW);
+  VELO.GR[0].STATE = READY_STATE;
+  VELO.GR[1].STATE = READY_STATE;
+  VELO.GR[2].STATE = READY_STATE;
 }
 
 void loop()
 {
   // put your main code here, to run repeatedly:
-  if (millis() - ms_now >= 500)
+  if (millis() - ms_now >= WATER_LEVEL_CHECK_INTERVAL)
   {
-    led_Run_state ? TXLED0 : TXLED1;
+   // led_Run_state ? TXLED0 : TXLED1;
     led_Run_state = !led_Run_state;
+    VELO.analogWaterLevelMin = analogRead(WATER_LEVEL_MIN_PIN);
+    VELO.analogWaterLevelMax = analogRead(WATER_LEVEL_MAX_PIN);
+
+    if (VELO.analogWaterLevelMax > 300)
+    {
+      VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP));
+      VELO.RELAY_REGISTER |= (1UL << (RELAY_EVFILL));
+      VELO.RELAY_REGISTER &= ~(1UL << (RELAY_RISC));
+      VELO.STATE = FILLING_STATE;
+      VELO.FillingUpFlag = false;
+    }
+    else
+    {
+      if (VELO.FillingUpFlag == false)
+      {
+        VELO.FillingUpFlag = true;
+        VELO.FillingUpStartMs = millis();
+        // Serial.print("water level min:");
+        // Serial.println(VELO.analogWaterLevelMin);
+        // Serial.print("water level max:");
+        // Serial.println(VELO.analogWaterLevelMax);
+      }
+    }
+    if (VELO.FillingUpFlag)
+    {
+      if (millis() - VELO.FillingUpStartMs >= WATER_LEVEL_STILL_PUMP_AFTER)
+      {
+        VELO.STATE = READY_STATE;
+        VELO.RELAY_REGISTER |= (1UL << (RELAY_RISC));
+        VELO.LED_REGISTER &= ~(1UL << (RELAY_EVFILL));
+        stop_pump();
+      }
+    }
     ms_now = millis();
   }
-  switch (VELO.SCAN_GROUP_NOW)
+  for (uint8_t g = 0; g < 3; g++)
   {
-  case 0: // on gr1
-    VELO.RELAY_REGISTER |= (1UL << (TRANSISTOR_GROUP1_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP2_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP3_POS));
-    (VELO.GR1.led_power_count_now > 21 && VELO.GR1.led_power_count_now > 0) ? VELO.GR1.led_power_count_now-- : (VELO.GR1.led_power_count_now < 21 && VELO.GR1.led_power_count_now >= 0) ? VELO.GR1.led_power_count_now++
-                                                                                                                                                                                        : VELO.GR1.led_power_count_now = 0;
-    VELO.GR1.key1.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (0)) : VELO.LED_REGISTER &= ~(1UL << (0));
-    VELO.GR1.key2.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (1)) : VELO.LED_REGISTER &= ~(1UL << (1));
-    VELO.GR1.key3.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (2)) : VELO.LED_REGISTER &= ~(1UL << (2));
-    VELO.GR1.key4.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (3)) : VELO.LED_REGISTER &= ~(1UL << (3));
-    VELO.GR1.key5.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (4)) : VELO.LED_REGISTER &= ~(1UL << (4));
-    VELO.GR1.key6.ledPower > VELO.GR1.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (5)) : VELO.LED_REGISTER &= ~(1UL << (5));
+    *(uint8_t *)VELO.GR[g].TRANSISTOR_REG |= (1UL << (VELO.GR[g].TRANSISTOR_POS));
+
+    (VELO.GR[g].led_power_count_now > 21 && VELO.GR[g].led_power_count_now > 0) ? VELO.GR[g].led_power_count_now-- : (VELO.GR[g].led_power_count_now < 21 && VELO.GR[g].led_power_count_now >= 0) ? VELO.GR[g].led_power_count_now++
+                                                                                                                                                                                                  : VELO.GR[g].led_power_count_now = 0;
+    VELO.GR[g].key[0].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (0)) : VELO.LED_REGISTER &= ~(1UL << (0));
+    VELO.GR[g].key[1].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (1)) : VELO.LED_REGISTER &= ~(1UL << (1));
+    VELO.GR[g].key[2].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (2)) : VELO.LED_REGISTER &= ~(1UL << (2));
+    VELO.GR[g].key[3].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (3)) : VELO.LED_REGISTER &= ~(1UL << (3));
+    VELO.GR[g].key[4].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (4)) : VELO.LED_REGISTER &= ~(1UL << (4));
+    VELO.GR[g].key[5].ledPower > VELO.GR[g].led_power_count_now ? VELO.LED_REGISTER |= (1UL << (5)) : VELO.LED_REGISTER &= ~(1UL << (5));
     expandio_transfer();
-    _delay_us(100);
-    if (PINF != VELO.GR1_PINF_BUFFER)
+    _delay_us(50);
+    if (PINF != VELO.GR[g].PINF_BUFFER)
     {
-      Serial.print("GR1:");
+      Serial.print("GR[");
+      Serial.print(g);
+      Serial.print("]:");
       Serial.println(PINF, BIN);
       switch (PINF)
       {
       case 0B00000000:
+        for (uint8_t k = 0; k < 6; k++)
+        {
+          if (VELO.GR[g].key[k].IsPressing && millis() - VELO.GR[g].key[k].StartPressingMS >= 120)
+          {
+            Serial.print(millis() - VELO.GR[g].key[k].StartPressingMS);
+            Serial.println("ms");
 
-        VELO.GR1.key1.IsPressing ? ((millis() - VELO.GR1.key1.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_extracting(1, 1) : stop_extracting(1, 1) : VELO.GR1.key2.IsPressing ? ((millis() - VELO.GR1.key2.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_extracting(1, 2) : stop_extracting(1, 2)
-                                                                                                                                                                       : VELO.GR1.key3.IsPressing   ? ((millis() - VELO.GR1.key3.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_extracting(1, 3) : stop_extracting(1, 3)
-                                                                                                                                                                       : VELO.GR1.key4.IsPressing   ? ((millis() - VELO.GR1.key4.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_extracting(1, 4) : stop_extracting(1, 4)
-                                                                                                                                                                       : VELO.GR1.key5.IsPressing   ? ((millis() - VELO.GR1.key5.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_extracting(1, 5) : stop_extracting(1, 5)
-                                                                                                                                                                       : VELO.GR1.key6.IsPressing   ? ((millis() - VELO.GR1.key6.StartPressingMS >= 120) && VELO.GR1.STATE == READY_STATE) ? start_hotwater_dispensing(1) : stop_hotwater_dispensing(1)
-                                                                                                                                                                                                    : null_function();
+            if (VELO.GR[g].key[k].Type == KEY_HOTWATER)
+            {
+              if (VELO.GR[g].isHotwaterDispensing)
+              {
+                start_hotwater_dispensing(g);
+              }
+              else
+              {
+                stop_hotwater_dispensing(g);
+              }
+            }
+            else if (VELO.GR[g].STATE == READY_STATE)
+            {
+              start_extracting(g, k);
+            }
+            else if (VELO.GR[g].isExtracting == k || k == 4)
+            {
+              stop_extracting(VELO.GR[g].GroupNum, VELO.GR[g].isExtracting);
+            }
+          }
+        }
 
-        (VELO.GR1.isCleaningPressing && millis() - VELO.GR1.cleaningPressingStartMS >= 120 && VELO.GR1.STATE == READY_STATE) ? VELO.GR1.STATE = CLEANING_SATE : VELO.null_variable = 0;
-        (VELO.GR1.isCleaningPressing && millis() - VELO.GR1.cleaningPressingStartMS >= 120 && VELO.GR1.STATE == CLEANING_SATE) ? VELO.GR1.STATE = READY_STATE : VELO.null_variable = 0;
-        VELO.GR1.key1.IsPressing = false;
-        VELO.GR1.key2.IsPressing = false;
-        VELO.GR1.key3.IsPressing = false;
-        VELO.GR1.key4.IsPressing = false;
-        VELO.GR1.key5.IsPressing = false;
-        VELO.GR1.key6.IsPressing = false;
-        VELO.GR1.isCleaningPressing = false;
+        (VELO.GR[g].isCleaningPressing && millis() - VELO.GR[g].cleaningPressingStartMS >= 120 && VELO.GR[g].STATE == READY_STATE) ? VELO.GR[g].STATE = CLEANING_SATE : VELO.null_variable = 0;
+        (VELO.GR[g].isCleaningPressing && millis() - VELO.GR[g].cleaningPressingStartMS >= 120 && VELO.GR[g].STATE == CLEANING_SATE) ? VELO.GR[g].STATE = READY_STATE : VELO.null_variable = 0;
+        VELO.GR[g].key[0].IsPressing = false;
+        VELO.GR[g].key[1].IsPressing = false;
+        VELO.GR[g].key[2].IsPressing = false;
+        VELO.GR[g].key[3].IsPressing = false;
+        VELO.GR[g].key[4].IsPressing = false;
+        VELO.GR[g].key[5].IsPressing = false;
+        VELO.GR[g].isCleaningPressing = false;
         break;
       case 0B00000001:
-        if (!VELO.GR1.key1.IsPressing)
+        if (!VELO.GR[g].key[0].IsPressing)
         {
-          VELO.GR1.key1.StartPressingMS = millis();
-          VELO.GR1.key1.IsPressing = true;
+          VELO.GR[g].key[0].StartPressingMS = millis();
+          VELO.GR[g].key[0].IsPressing = true;
         }
 
         break;
       case 0B00000010:
-        if (!VELO.GR1.key2.IsPressing)
+        if (!VELO.GR[g].key[1].IsPressing)
         {
-          VELO.GR1.key2.StartPressingMS = millis();
-          VELO.GR1.key2.IsPressing = true;
+          VELO.GR[g].key[1].StartPressingMS = millis();
+          VELO.GR[g].key[1].IsPressing = true;
         }
 
         break;
       case 0B00010000:
-        if (!VELO.GR1.key3.IsPressing)
+        if (!VELO.GR[g].key[2].IsPressing)
         {
-          VELO.GR1.key3.StartPressingMS = millis();
-          VELO.GR1.key3.IsPressing = true;
+          VELO.GR[g].key[2].StartPressingMS = millis();
+          VELO.GR[g].key[2].IsPressing = true;
         }
 
         break;
       case 0B00100000:
-        if (!VELO.GR1.key4.IsPressing)
+        if (!VELO.GR[g].key[3].IsPressing)
         {
-          VELO.GR1.key4.StartPressingMS = millis();
-          VELO.GR1.key4.IsPressing = true;
+          VELO.GR[g].key[3].StartPressingMS = millis();
+          VELO.GR[g].key[3].IsPressing = true;
         }
 
         break;
       case 0B01000000:
-        if (!VELO.GR1.key5.IsPressing)
+        if (!VELO.GR[g].key[4].IsPressing)
         {
-          VELO.GR1.key5.StartPressingMS = millis();
-          VELO.GR1.key5.IsPressing = true;
+          VELO.GR[g].key[4].StartPressingMS = millis();
+          VELO.GR[g].key[4].IsPressing = true;
         }
 
         break;
       case 0B10000000:
-        if (!VELO.GR1.key6.IsPressing)
+        if (!VELO.GR[g].key[5].IsPressing)
         {
-          VELO.GR1.key6.StartPressingMS = millis();
-          VELO.GR1.key6.IsPressing = true;
+          VELO.GR[g].key[5].StartPressingMS = millis();
+          VELO.GR[g].key[5].IsPressing = true;
         }
 
         break;
       case 0B01000001:
-        if (!VELO.GR1.isCleaningPressing)
+        if (!VELO.GR[g].isCleaningPressing)
         {
-          VELO.GR1.key1.StartPressingMS = millis();
-          VELO.GR1.key1.IsPressing = false;
-          VELO.GR1.key2.StartPressingMS = millis();
-          VELO.GR1.key2.IsPressing = false;
-          VELO.GR1.key3.StartPressingMS = millis();
-          VELO.GR1.key3.IsPressing = false;
-          VELO.GR1.key4.StartPressingMS = millis();
-          VELO.GR1.key4.IsPressing = false;
-          VELO.GR1.key5.StartPressingMS = millis();
-          VELO.GR1.key5.IsPressing = false;
-          VELO.GR1.key6.StartPressingMS = millis();
-          VELO.GR1.key6.IsPressing = false;
-          VELO.GR1.cleaningPressingStartMS = millis();
-          VELO.GR1.isCleaningPressing = true;
+          VELO.GR[g].key[0].StartPressingMS = millis();
+          VELO.GR[g].key[0].IsPressing = false;
+          VELO.GR[g].key[1].StartPressingMS = millis();
+          VELO.GR[g].key[1].IsPressing = false;
+          VELO.GR[g].key[2].StartPressingMS = millis();
+          VELO.GR[g].key[2].IsPressing = false;
+          VELO.GR[g].key[3].StartPressingMS = millis();
+          VELO.GR[g].key[3].IsPressing = false;
+          VELO.GR[g].key[4].StartPressingMS = millis();
+          VELO.GR[g].key[4].IsPressing = false;
+          VELO.GR[g].key[5].StartPressingMS = millis();
+          VELO.GR[g].key[5].IsPressing = false;
+          VELO.GR[g].cleaningPressingStartMS = millis();
+          VELO.GR[g].isCleaningPressing = true;
         }
 
         break;
       default:
-        VELO.GR1.key1.IsPressing = false;
-        VELO.GR1.key2.IsPressing = false;
-        VELO.GR1.key3.IsPressing = false;
-        VELO.GR1.key4.IsPressing = false;
-        VELO.GR1.key5.IsPressing = false;
-        VELO.GR1.key6.IsPressing = false;
-        VELO.GR1.isCleaningPressing = false;
         break;
       }
-      VELO.GR1_PINF_BUFFER = PINF;
+      VELO.GR[g].PINF_BUFFER = PINF;
     }
-    VELO.SCAN_GROUP_NOW++;
-    break;
-  case 1: // off
+
     VELO.RELAY_REGISTER &= ~(1UL << (TRANSISTOR_GROUP1_POS));
     VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP2_POS));
     VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP3_POS));
@@ -174,286 +224,7 @@ void loop()
     VELO.LED_REGISTER &= ~(1UL << (5));
 
     expandio_transfer();
-    _delay_us(200);
-    VELO.SCAN_GROUP_NOW++;
-    break;
-  case 2: // oN gr2
-    VELO.LED_REGISTER |= (1UL << (TRANSISTOR_GROUP2_POS));
-    VELO.RELAY_REGISTER &= ~(1UL << (TRANSISTOR_GROUP1_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP3_POS));
-    (VELO.GR2.led_power_count_now > 21 && VELO.GR2.led_power_count_now > 0) ? VELO.GR2.led_power_count_now-- : (VELO.GR2.led_power_count_now < 21 && VELO.GR2.led_power_count_now >= 0) ? VELO.GR2.led_power_count_now++
-                                                                                                                                                                                        : VELO.GR2.led_power_count_now = 0;
-    VELO.GR2.key1.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (0)) : VELO.LED_REGISTER &= ~(1UL << (0));
-    VELO.GR2.key2.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (1)) : VELO.LED_REGISTER &= ~(1UL << (1));
-    VELO.GR2.key3.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (2)) : VELO.LED_REGISTER &= ~(1UL << (2));
-    VELO.GR2.key4.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (3)) : VELO.LED_REGISTER &= ~(1UL << (3));
-    VELO.GR2.key5.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (4)) : VELO.LED_REGISTER &= ~(1UL << (4));
-    VELO.GR2.key6.ledPower > VELO.GR2.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (5)) : VELO.LED_REGISTER &= ~(1UL << (5));
-    expandio_transfer();
     _delay_us(100);
-    if (PINF != VELO.GR2_PINF_BUFFER)
-    {
-      Serial.print("GR2:");
-      Serial.println(PINF, BIN);
-      switch (PINF)
-      {
-      case 0B00000000:
-
-        VELO.GR2.key1.IsPressing ? ((millis() - VELO.GR2.key1.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_extracting(2, 1) : stop_extracting(2, 1) : VELO.GR2.key2.IsPressing ? ((millis() - VELO.GR2.key2.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_extracting(2, 2) : stop_extracting(2, 2)
-                                                                                                                                                                       : VELO.GR2.key3.IsPressing   ? ((millis() - VELO.GR2.key3.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_extracting(2, 3) : stop_extracting(2, 3)
-                                                                                                                                                                       : VELO.GR2.key4.IsPressing   ? ((millis() - VELO.GR2.key4.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_extracting(2, 4) : stop_extracting(2, 4)
-                                                                                                                                                                       : VELO.GR2.key5.IsPressing   ? ((millis() - VELO.GR2.key5.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_extracting(2, 5) : stop_extracting(2, 5)
-                                                                                                                                                                       : VELO.GR2.key6.IsPressing   ? ((millis() - VELO.GR2.key6.StartPressingMS >= 120) && VELO.GR2.STATE == READY_STATE) ? start_hotwater_dispensing(2) : stop_hotwater_dispensing(2)
-                                                                                                                                                                                                    : null_function();
-
-        (VELO.GR2.isCleaningPressing && millis() - VELO.GR2.cleaningPressingStartMS >= 120 && VELO.GR2.STATE == READY_STATE) ? VELO.GR2.STATE = CLEANING_SATE : VELO.null_variable = 0;
-        (VELO.GR2.isCleaningPressing && millis() - VELO.GR2.cleaningPressingStartMS >= 120 && VELO.GR2.STATE == CLEANING_SATE) ? VELO.GR2.STATE = READY_STATE : VELO.null_variable = 0;
-        VELO.GR2.key1.IsPressing = false;
-        VELO.GR2.key2.IsPressing = false;
-        VELO.GR2.key3.IsPressing = false;
-        VELO.GR2.key4.IsPressing = false;
-        VELO.GR2.key5.IsPressing = false;
-        VELO.GR2.key6.IsPressing = false;
-        VELO.GR2.isCleaningPressing = false;
-        break;
-      case 0B00000001:
-        if (!VELO.GR2.key1.IsPressing)
-        {
-          VELO.GR2.key1.StartPressingMS = millis();
-          VELO.GR2.key1.IsPressing = true;
-        }
-
-        break;
-      case 0B00000010:
-        if (!VELO.GR2.key2.IsPressing)
-        {
-          VELO.GR2.key2.StartPressingMS = millis();
-          VELO.GR2.key2.IsPressing = true;
-        }
-
-        break;
-      case 0B00010000:
-        if (!VELO.GR2.key3.IsPressing)
-        {
-          VELO.GR2.key3.StartPressingMS = millis();
-          VELO.GR2.key3.IsPressing = true;
-        }
-
-        break;
-      case 0B00100000:
-        if (!VELO.GR2.key4.IsPressing)
-        {
-          VELO.GR2.key4.StartPressingMS = millis();
-          VELO.GR2.key4.IsPressing = true;
-        }
-
-        break;
-      case 0B01000000:
-        if (!VELO.GR2.key5.IsPressing)
-        {
-          VELO.GR2.key5.StartPressingMS = millis();
-          VELO.GR2.key5.IsPressing = true;
-        }
-
-        break;
-      case 0B10000000:
-        if (!VELO.GR2.key6.IsPressing)
-        {
-          VELO.GR2.key6.StartPressingMS = millis();
-          VELO.GR2.key6.IsPressing = true;
-        }
-
-        break;
-      case 0B01000001:
-        if (!VELO.GR2.isCleaningPressing)
-        {
-          VELO.GR2.key1.StartPressingMS = millis();
-          VELO.GR2.key1.IsPressing = false;
-          VELO.GR2.key2.StartPressingMS = millis();
-          VELO.GR2.key2.IsPressing = false;
-          VELO.GR2.key3.StartPressingMS = millis();
-          VELO.GR2.key3.IsPressing = false;
-          VELO.GR2.key4.StartPressingMS = millis();
-          VELO.GR2.key4.IsPressing = false;
-          VELO.GR2.key5.StartPressingMS = millis();
-          VELO.GR2.key5.IsPressing = false;
-          VELO.GR2.key6.StartPressingMS = millis();
-          VELO.GR2.key6.IsPressing = false;
-          VELO.GR2.cleaningPressingStartMS = millis();
-          VELO.GR2.isCleaningPressing = true;
-        }
-
-        break;
-      default:
-        VELO.GR2.key1.IsPressing = false;
-        VELO.GR2.key2.IsPressing = false;
-        VELO.GR2.key3.IsPressing = false;
-        VELO.GR2.key4.IsPressing = false;
-        VELO.GR2.key5.IsPressing = false;
-        VELO.GR2.key6.IsPressing = false;
-        VELO.GR2.isCleaningPressing = false;
-        break;
-      }
-      VELO.GR2_PINF_BUFFER = PINF;
-    }
-    VELO.SCAN_GROUP_NOW++;
-    break;
-  case 3: // off
-    VELO.RELAY_REGISTER &= ~(1UL << (TRANSISTOR_GROUP1_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP2_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP3_POS));
-    VELO.LED_REGISTER &= ~(1UL << (0));
-    VELO.LED_REGISTER &= ~(1UL << (1));
-    VELO.LED_REGISTER &= ~(1UL << (2));
-    VELO.LED_REGISTER &= ~(1UL << (3));
-    VELO.LED_REGISTER &= ~(1UL << (4));
-    VELO.LED_REGISTER &= ~(1UL << (5));
-
-    expandio_transfer();
-    _delay_us(200);
-    VELO.SCAN_GROUP_NOW++;
-    break;
-
-  case 4: // on gr3
-    VELO.LED_REGISTER |= (1UL << (TRANSISTOR_GROUP3_POS));
-    VELO.RELAY_REGISTER &= ~(1UL << (TRANSISTOR_GROUP1_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP2_POS));
-    (VELO.GR3.led_power_count_now > 21 && VELO.GR3.led_power_count_now > 0) ? VELO.GR3.led_power_count_now-- : (VELO.GR3.led_power_count_now < 21 && VELO.GR3.led_power_count_now >= 0) ? VELO.GR3.led_power_count_now++
-                                                                                                                                                                                        : VELO.GR3.led_power_count_now = 0;
-    VELO.GR3.key1.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (0)) : VELO.LED_REGISTER &= ~(1UL << (0));
-    VELO.GR3.key2.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (1)) : VELO.LED_REGISTER &= ~(1UL << (1));
-    VELO.GR3.key3.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (2)) : VELO.LED_REGISTER &= ~(1UL << (2));
-    VELO.GR3.key4.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (3)) : VELO.LED_REGISTER &= ~(1UL << (3));
-    VELO.GR3.key5.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (4)) : VELO.LED_REGISTER &= ~(1UL << (4));
-    VELO.GR3.key6.ledPower > VELO.GR3.led_power_count_now ? VELO.LED_REGISTER |= (1UL << (5)) : VELO.LED_REGISTER &= ~(1UL << (5));
-    expandio_transfer();
-    _delay_us(100);
-    if (PINF != VELO.GR3_PINF_BUFFER)
-    {
-      Serial.print("GR3:");
-      Serial.println(PINF, BIN);
-      switch (PINF)
-      {
-      case 0B00000000:
-
-        VELO.GR3.key1.IsPressing ? ((millis() - VELO.GR3.key1.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_extracting(3, 1) : stop_extracting(3, 1) : VELO.GR3.key2.IsPressing ? ((millis() - VELO.GR3.key2.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_extracting(3, 2) : stop_extracting(3, 2)
-                                                                                                                                                                       : VELO.GR3.key3.IsPressing   ? ((millis() - VELO.GR3.key3.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_extracting(3, 3) : stop_extracting(3, 3)
-                                                                                                                                                                       : VELO.GR3.key4.IsPressing   ? ((millis() - VELO.GR3.key4.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_extracting(3, 4) : stop_extracting(3, 4)
-                                                                                                                                                                       : VELO.GR3.key5.IsPressing   ? ((millis() - VELO.GR3.key5.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_extracting(3, 5) : stop_extracting(3, 5)
-                                                                                                                                                                       : VELO.GR3.key6.IsPressing   ? ((millis() - VELO.GR3.key6.StartPressingMS >= 120) && VELO.GR3.STATE == READY_STATE) ? start_hotwater_dispensing(3) : stop_hotwater_dispensing(3)
-                                                                                                                                                                                                    : null_function();
-
-        (VELO.GR3.isCleaningPressing && millis() - VELO.GR3.cleaningPressingStartMS >= 120 && VELO.GR3.STATE == READY_STATE) ? VELO.GR3.STATE = CLEANING_SATE : VELO.null_variable = 0;
-        (VELO.GR3.isCleaningPressing && millis() - VELO.GR3.cleaningPressingStartMS >= 120 && VELO.GR3.STATE == CLEANING_SATE) ? VELO.GR3.STATE = READY_STATE : VELO.null_variable = 0;
-        VELO.GR3.key1.IsPressing = false;
-        VELO.GR3.key2.IsPressing = false;
-        VELO.GR3.key3.IsPressing = false;
-        VELO.GR3.key4.IsPressing = false;
-        VELO.GR3.key5.IsPressing = false;
-        VELO.GR3.key6.IsPressing = false;
-        VELO.GR3.isCleaningPressing = false;
-        break;
-      case 0B00000001:
-        if (!VELO.GR3.key1.IsPressing)
-        {
-          VELO.GR3.key1.StartPressingMS = millis();
-          VELO.GR3.key1.IsPressing = true;
-        }
-
-        break;
-      case 0B00000010:
-        if (!VELO.GR3.key2.IsPressing)
-        {
-          VELO.GR3.key2.StartPressingMS = millis();
-          VELO.GR3.key2.IsPressing = true;
-        }
-
-        break;
-      case 0B00010000:
-        if (!VELO.GR3.key3.IsPressing)
-        {
-          VELO.GR3.key3.StartPressingMS = millis();
-          VELO.GR3.key3.IsPressing = true;
-        }
-
-        break;
-      case 0B00100000:
-        if (!VELO.GR3.key4.IsPressing)
-        {
-          VELO.GR3.key4.StartPressingMS = millis();
-          VELO.GR3.key4.IsPressing = true;
-        }
-
-        break;
-      case 0B01000000:
-        if (!VELO.GR3.key5.IsPressing)
-        {
-          VELO.GR3.key5.StartPressingMS = millis();
-          VELO.GR3.key5.IsPressing = true;
-        }
-
-        break;
-      case 0B10000000:
-        if (!VELO.GR3.key6.IsPressing)
-        {
-          VELO.GR3.key6.StartPressingMS = millis();
-          VELO.GR3.key6.IsPressing = true;
-        }
-
-        break;
-      case 0B01000001:
-        if (!VELO.GR3.isCleaningPressing)
-        {
-          VELO.GR3.key1.StartPressingMS = millis();
-          VELO.GR3.key1.IsPressing = false;
-          VELO.GR3.key2.StartPressingMS = millis();
-          VELO.GR3.key2.IsPressing = false;
-          VELO.GR3.key3.StartPressingMS = millis();
-          VELO.GR3.key3.IsPressing = false;
-          VELO.GR3.key4.StartPressingMS = millis();
-          VELO.GR3.key4.IsPressing = false;
-          VELO.GR3.key5.StartPressingMS = millis();
-          VELO.GR3.key5.IsPressing = false;
-          VELO.GR3.key6.StartPressingMS = millis();
-          VELO.GR3.key6.IsPressing = false;
-          VELO.GR3.cleaningPressingStartMS = millis();
-          VELO.GR3.isCleaningPressing = true;
-        }
-
-        break;
-      default:
-        VELO.GR3.key1.IsPressing = false;
-        VELO.GR3.key2.IsPressing = false;
-        VELO.GR3.key3.IsPressing = false;
-        VELO.GR3.key4.IsPressing = false;
-        VELO.GR3.key5.IsPressing = false;
-        VELO.GR3.key6.IsPressing = false;
-        VELO.GR3.isCleaningPressing = false;
-        break;
-      }
-      VELO.GR3_PINF_BUFFER = PINF;
-    }
-
-    VELO.SCAN_GROUP_NOW++;
-    break;
-  case 5: // off
-    VELO.RELAY_REGISTER &= ~(1UL << (TRANSISTOR_GROUP1_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP2_POS));
-    VELO.LED_REGISTER &= ~(1UL << (TRANSISTOR_GROUP3_POS));
-    VELO.LED_REGISTER &= ~(1UL << (0));
-    VELO.LED_REGISTER &= ~(1UL << (1));
-    VELO.LED_REGISTER &= ~(1UL << (2));
-    VELO.LED_REGISTER &= ~(1UL << (3));
-    VELO.LED_REGISTER &= ~(1UL << (4));
-    VELO.LED_REGISTER &= ~(1UL << (5));
-
-    expandio_transfer();
-    _delay_us(200);
-    VELO.SCAN_GROUP_NOW = 0;
-    break;
-
-  default:
-    break;
   }
 }
 
@@ -470,181 +241,102 @@ void start_extracting(uint8_t group, uint8_t key)
   Serial.print(group);
   Serial.print(" key:");
   Serial.println(key);
-  switch (group)
-  {
-  case 1:
-    if (VELO.GR1.STATE == READY_STATE)
-    {
-      VELO.GR1.STATE = EXTRACTING_STATE;
-      VELO.GR1.isExtracting = key;
-      VELO.GR1.loadDataNeededForExtracting(key);
-      VELO.GR1.key1.Num == key ? VELO.GR1.key1.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR1.key1.ledPower = 0;
-      VELO.GR1.key2.Num == key ? VELO.GR1.key2.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR1.key2.ledPower = 0;
-      VELO.GR1.key3.Num == key ? VELO.GR1.key3.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR1.key3.ledPower = 0;
-      VELO.GR1.key4.Num == key ? VELO.GR1.key4.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR1.key4.ledPower = 0;
-      VELO.GR1.key5.Num == key ? VELO.GR1.key5.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR1.key5.ledPower = 0;
-      VELO.GR1.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-    }
-    break;
-  case 2:
-    if (VELO.GR2.STATE == READY_STATE)
-    {
-      VELO.GR2.STATE = EXTRACTING_STATE;
-      VELO.GR2.isExtracting = key;
-      VELO.GR2.loadDataNeededForExtracting(key);
-      VELO.GR2.key1.Num == key ? VELO.GR2.key1.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR2.key1.ledPower = 0;
-      VELO.GR2.key2.Num == key ? VELO.GR2.key2.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR2.key2.ledPower = 0;
-      VELO.GR2.key3.Num == key ? VELO.GR2.key3.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR2.key3.ledPower = 0;
-      VELO.GR2.key4.Num == key ? VELO.GR2.key4.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR2.key4.ledPower = 0;
-      VELO.GR2.key5.Num == key ? VELO.GR2.key5.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR2.key5.ledPower = 0;
-      VELO.GR2.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-    }
-    break;
-  case 3:
-    if (VELO.GR3.STATE == READY_STATE)
-    {
-      VELO.GR3.STATE = EXTRACTING_STATE;
-      VELO.GR3.isExtracting = key;
-      VELO.GR3.loadDataNeededForExtracting(key);
-      VELO.GR3.key1.Num == key ? VELO.GR3.key1.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR3.key1.ledPower = 0;
-      VELO.GR3.key2.Num == key ? VELO.GR3.key2.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR3.key2.ledPower = 0;
-      VELO.GR3.key3.Num == key ? VELO.GR3.key3.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR3.key3.ledPower = 0;
-      VELO.GR3.key4.Num == key ? VELO.GR3.key4.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR3.key4.ledPower = 0;
-      VELO.GR3.key5.Num == key ? VELO.GR3.key5.ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR3.key5.ledPower = 0;
-      VELO.GR3.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-    }
-    break;
-
-  default:
-    break;
-  }
+  VELO.GR[group].STATE = EXTRACTING_STATE;
+  VELO.GR[group].isExtracting = key+1;
+  VELO.GR[group].loadDataNeededForExtracting(key);
+  VELO.GR[group].key[0].Num == key ? VELO.GR[group].key[0].ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR[group].key[0].ledPower = 0;
+  VELO.GR[group].key[1].Num == key ? VELO.GR[group].key[1].ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR[group].key[1].ledPower = 0;
+  VELO.GR[group].key[2].Num == key ? VELO.GR[group].key[2].ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR[group].key[2].ledPower = 0;
+  VELO.GR[group].key[3].Num == key ? VELO.GR[group].key[3].ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR[group].key[3].ledPower = 0;
+  VELO.GR[group].key[4].Num == key ? VELO.GR[group].key[4].ledPower = VELO.KEY_LED_MAX_POWER : VELO.GR[group].key[4].ledPower = 0;
+  VELO.GR[group].key[4].ledPower = VELO.KEY_LED_MAX_POWER;
+  
+  VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP));
+  VELO.RELAY_REGISTER |= (1UL << (VELO.GR[group].SOLENOID_RELAY_POS));
 }
 void stop_extracting(uint8_t group, uint8_t key)
 {
-
-  switch (group)
+  if (VELO.GR[group].STATE == EXTRACTING_STATE)
   {
-  case 1:
-    if (VELO.GR1.STATE == EXTRACTING_STATE)
+    Serial.print("stop extracting group:");
+    Serial.print(group);
+    Serial.print(" key:");
+    Serial.println(key);
+    VELO.GR[group].STATE = READY_STATE;
+    VELO.GR[group].isExtracting=0;
+    if (VELO.KEY_LED_NORMAL_STATE)
     {
-      if (VELO.GR1.isExtracting == key || VELO.GR1.isExtracting == 5)
-      {
-        Serial.print("stop extracting group:");
-        Serial.print(group);
-        Serial.print(" key:");
-        Serial.println(key);
-        if (VELO.KEY_LED_NORMAL_STATE)
-        {
-          VELO.GR1.key1.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR1.key2.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR1.key3.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR1.key4.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR1.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-        }
-        else
-        {
-          VELO.GR1.key1.ledPower = 0;
-          VELO.GR1.key2.ledPower = 0;
-          VELO.GR1.key3.ledPower = 0;
-          VELO.GR1.key4.ledPower = 0;
-          VELO.GR1.key5.ledPower = 0;
-        }
-      }
+      VELO.GR[group].key[0].ledPower = VELO.KEY_LED_MAX_POWER;
+      VELO.GR[group].key[1].ledPower = VELO.KEY_LED_MAX_POWER;
+      VELO.GR[group].key[2].ledPower = VELO.KEY_LED_MAX_POWER;
+      VELO.GR[group].key[3].ledPower = VELO.KEY_LED_MAX_POWER;
+      VELO.GR[group].key[4].ledPower = VELO.KEY_LED_MAX_POWER;
     }
-
-    VELO.GR1.STATE = READY_STATE;
-    VELO.GR1.isExtracting = 0;
-    break;
-  case 2:
-    if (VELO.GR2.STATE == EXTRACTING_STATE)
+    else
     {
-      if (VELO.GR2.isExtracting == key || VELO.GR2.isExtracting == 5)
-      {
-        Serial.print("stop extracting group:");
-        Serial.print(group);
-        Serial.print(" key:");
-        Serial.println(key);
-        if (VELO.KEY_LED_NORMAL_STATE)
-        {
-          VELO.GR2.key1.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR2.key2.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR2.key3.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR2.key4.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR2.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-        }
-        else
-        {
-          VELO.GR2.key1.ledPower = 0;
-          VELO.GR2.key2.ledPower = 0;
-          VELO.GR2.key3.ledPower = 0;
-          VELO.GR2.key4.ledPower = 0;
-          VELO.GR2.key5.ledPower = 0;
-        }
-      }
+      VELO.GR[group].key[0].ledPower = 0;
+      VELO.GR[group].key[1].ledPower = 0;
+      VELO.GR[group].key[2].ledPower = 0;
+      VELO.GR[group].key[3].ledPower = 0;
+      VELO.GR[group].key[4].ledPower = 0;
     }
-    VELO.GR2.STATE = READY_STATE;
-    VELO.GR2.isExtracting = 0;
-    break;
-  case 3:
-    if (VELO.GR3.STATE == EXTRACTING_STATE)
-    {
-      if (VELO.GR3.isExtracting == key || VELO.GR3.isExtracting == 5)
-      {
-        Serial.print("stop extracting group:");
-        Serial.print(group);
-        Serial.print(" key:");
-        Serial.println(key);
-        if (VELO.KEY_LED_NORMAL_STATE)
-        {
-          VELO.GR3.key1.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR3.key2.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR3.key3.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR3.key4.ledPower = VELO.KEY_LED_MAX_POWER;
-          VELO.GR3.key5.ledPower = VELO.KEY_LED_MAX_POWER;
-        }
-        else
-        {
-          VELO.GR3.key1.ledPower = 0;
-          VELO.GR3.key2.ledPower = 0;
-          VELO.GR3.key3.ledPower = 0;
-          VELO.GR3.key4.ledPower = 0;
-          VELO.GR3.key5.ledPower = 0;
-        }
-      }
-    }
-    VELO.GR3.STATE = READY_STATE;
-    VELO.GR3.isExtracting = 0;
-    break;
-  default:
-    break;
+    VELO.RELAY_REGISTER &= ~(1UL << (VELO.GR[group].SOLENOID_RELAY_POS));
+    stop_pump();
   }
 }
 void start_hotwater_dispensing(uint8_t group)
 {
   Serial.print("start hotwater dispensing group:");
   Serial.println(group);
+  VELO.GR[group].isHotwaterDispensing = 1;
+  VELO.GR[group].hotWaterDispensingStartMS = millis();
+  VELO.RELAY_REGISTER |= (1UL << (RELAY_EVTEA));
+  VELO.isFillWithpump ? VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP)) : VELO.null_variable;
 }
 void stop_hotwater_dispensing(uint8_t group)
 {
   Serial.print("stop hotwater dispensing group:");
   Serial.println(group);
+  VELO.GR[group].isHotwaterDispensing = 0;
+  VELO.RELAY_REGISTER &= ~(1UL << (RELAY_EVTEA));
+  stop_pump();
 }
 void led_dimming_control()
 {
-  if (VELO.GR1.isLedTopDimming)
+  if (VELO.GR[0].isLedTopDimming)
   {
-    VELO.GR1.led_dimming_now--;
-    if (VELO.GR1.led_dimming_now <= 0)
+    VELO.GR[0].led_dimming_now--;
+    if (VELO.GR[0].led_dimming_now <= 0)
     {
-      VELO.GR1.isLedTopDimming = false;
+      VELO.GR[0].isLedTopDimming = false;
     }
   }
   else
   {
-    VELO.GR1.led_dimming_now++;
-    if (VELO.GR1.led_dimming_now >= 10)
+    VELO.GR[0].led_dimming_now++;
+    if (VELO.GR[0].led_dimming_now >= 10)
     {
-      VELO.GR1.isLedTopDimming = true;
+      VELO.GR[0].isLedTopDimming = true;
+    }
+  }
+}
+void stop_pump()
+{
+  if (VELO.GR[0].STATE == READY_STATE && VELO.GR[1].STATE == READY_STATE && VELO.GR[2].STATE == READY_STATE)
+  {
+    if (VELO.isTeaWithpump)
+    {
+      if (VELO.GR[0].isHotwaterDispensing == 0 && VELO.GR[1].isHotwaterDispensing == 0 && VELO.GR[1].isHotwaterDispensing == 0)
+      {
+        if (VELO.STATE != FILLING_STATE)
+        {
+          VELO.RELAY_REGISTER &= ~(1UL << (RELAY_PUMP));
+        }
+      }
+    }
+    else if (VELO.STATE != FILLING_STATE)
+    {
+      VELO.RELAY_REGISTER &= ~(1UL << (RELAY_PUMP));
     }
   }
 }

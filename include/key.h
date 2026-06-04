@@ -5,7 +5,9 @@
 #define KEY_TWO_COFFEE 4
 #define KEY_MANUAL 5
 #define KEY_HOTWATER 6
-
+#define OFF 0
+#define DIMMING 1
+#define TOGLE 2
 class KEY
 {
 private:
@@ -16,8 +18,9 @@ public:
     uint8_t State;
     uint8_t ParentGroup;
     uint8_t IsPressing;
-    uint8_t ledPower;
+    uint16_t ledPower;
     uint32_t StartPressingMS;
+    uint32_t isLedDimming;//OFF||DIMMING||TOGLE
     uint32_t EEPROM_ADDR_START_ADDRESS;
     uint32_t EEPROM_ADDR_PREINFUSION_START_TIME;
     uint32_t EEPROM_ADDR_PREINFUSION_WAIT_TIME;
@@ -34,14 +37,14 @@ public:
     uint32_t DATA_TOTAL_PULSE;
     float DATA_TOTAL_ML;
     uint32_t DATA_HOTWATER_DISPENSING_TIME;
-    void init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint8_t led_max_power);
+    void init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint16_t led_max_power);
     void loadDataFromEEPROM();
     void saveDataToEEPROM();
 
     KEY();
     ~KEY();
 };
-void KEY::init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint8_t led_max_power)
+void KEY::init(uint8_t type, uint8_t num, uint8_t parentGroup, uint32_t eeprom_addr_start_address,uint16_t led_max_power)
 {
     Type = type;
     Num = num;

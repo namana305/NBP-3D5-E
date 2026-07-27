@@ -23,7 +23,7 @@ public:
     float NEED_TOTAL_ML;
     uint32_t hotWaterDispensingStartMS;
     uint8_t isHotwaterDispensing;
-
+    uint32_t NEED_HOT_WATER_TIME;
     uint32_t NEED_HOTWATER_DISPENSING_TIME;
     void loadDataNeededForExtracting(uint8_t keyNum);
 
@@ -31,13 +31,13 @@ public:
 
     uint8_t GroupNum;
     uint32_t EEPROM_ADDR_START_ADDRESS;
- 
+
     uint32_t led_power_count_now;
-    void init(uint8_t groupNum, uint32_t eeprom_addr_start_address, uint16_t led_max_power, uint8_t transistor_pos, uint8_t *transistor_register,uint8_t solenoid_pos);
+    void init(uint8_t groupNum, uint32_t eeprom_addr_start_address, uint16_t led_max_power, uint8_t transistor_pos, uint8_t *transistor_register, uint8_t solenoid_pos);
     GROUP(/* args */);
     ~GROUP();
 };
-void GROUP::init(uint8_t groupNum, uint32_t eeprom_addr_start_address, uint16_t led_max_power, uint8_t transistor_pos, uint8_t *transistor_register,uint8_t solenoid_pos)
+void GROUP::init(uint8_t groupNum, uint32_t eeprom_addr_start_address, uint16_t led_max_power, uint8_t transistor_pos, uint8_t *transistor_register, uint8_t solenoid_pos)
 {
     GroupNum = groupNum;
     EEPROM_ADDR_START_ADDRESS = eeprom_addr_start_address;
@@ -49,7 +49,7 @@ void GROUP::init(uint8_t groupNum, uint32_t eeprom_addr_start_address, uint16_t 
     this->key[5].init(KEY_HOTWATER, 5, groupNum, eeprom_addr_start_address + 160, led_max_power);
     TRANSISTOR_POS = transistor_pos;
     TRANSISTOR_REG = transistor_register;
-    SOLENOID_RELAY_POS=solenoid_pos;
+    SOLENOID_RELAY_POS = solenoid_pos;
 }
 GROUP::GROUP(/* args */)
 {

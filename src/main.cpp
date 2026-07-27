@@ -40,6 +40,7 @@ void setup()
 void loop()
 {
   // put your main code here, to run repeatedly:
+  // watch water level
   if (millis() - ms_now >= WATER_LEVEL_CHECK_INTERVAL)
   {
     led_Run_state ? TXLED0 : TXLED1;
@@ -47,13 +48,20 @@ void loop()
     VELO.analogWaterLevelMin = analogRead(WATER_LEVEL_MIN_PIN);
     VELO.analogWaterLevelMax = analogRead(WATER_LEVEL_MAX_PIN);
 
-    if (VELO.analogWaterLevelMax > 300)
+    if (VELO.analogWaterLevelMax > VELO.waterLevelSensorCompareValue)
     {
-      VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP));
-      VELO.RELAY_REGISTER |= (1UL << (RELAY_EVFILL));
-      VELO.RELAY_REGISTER &= ~(1UL << (RELAY_RISC));
-      VELO.STATE = FILLING_STATE;
-      VELO.FillingUpFlag = false;
+      if (VELO.isFillWhileExtracting)
+      {
+        if (VELO.GR[0].STATE == READY_STATE || VELO.GR[1].STATE == READY_STATE || VELO.GR[2].STATE == READY_STATE)
+        {
+          VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP));
+          VELO.RELAY_REGISTER |= (1UL << (RELAY_EVFILL));
+          VELO.RELAY_REGISTER &= ~(1UL << (RELAY_RISC));
+          VELO.STATE = FILLING_STATE;
+          VELO.FillingUpFlag = false;
+        }
+
+      }
     }
     else
     {
@@ -73,15 +81,14 @@ void loop()
       {
         VELO.STATE = READY_STATE;
         VELO.RELAY_REGISTER |= (1UL << (RELAY_RISC));
-        VELO.LED_REGISTER &= ~(1UL << (RELAY_EVFILL));
+        VELO.RELAY_REGISTER &= ~(1UL << (RELAY_EVFILL));
         stop_pump();
       }
     }
     ms_now = millis();
   }
   // dimming
-  // if (millis() - VELO.ledDimmingDuration >= 10)
-  // {
+
   if (VELO.isLedTopDimming)
   {
     VELO.led_dimming_now--;
@@ -139,8 +146,48 @@ void loop()
   //   Serial.println((uint8_t)((float)VELO.GR[0].key[1].ledPower / (float)VELO.KEY_LED_MAX_POWER * 25));
   //   Serial.println((uint8_t)((float)VELO.GR[0].key[2].ledPower / (float)VELO.KEY_LED_MAX_POWER * 25));
   //   VELO.ledDimmingDuration = millis();
-  // }
-  // led scan
+  // watch hot water
+  for (uint8_t g = 0; g < 3; g++)
+  {
+    if (VELO.GR[g].isHotwaterDispensing)
+    {
+      if (VELO.STATE == SETUP_WATER_STATE)
+      {
+      }
+      else
+      {
+        if (millis() - VELO.GR[g].hotWaterDispensingStartMS > VELO.GR[g].NEED_HOT_WATER_TIME)
+        {
+          stop_hotwater_dispensing(g);
+        }
+      }
+    }
+  }
+  // watch for setup_state led
+  Serial.println(VELO.STATE);
+  delay(500);
+  if (VELO.STATE == SETUP_WATER_STATE)
+  {
+    // Serial.println("setup");
+    // delay(1000);
+    for (uint8_t g = 0; g < 3; g++)
+    {
+      if (VELO.GR[g].STATE == READY_STATE)
+      {
+        for (uint8_t k = 0; k < 6; k++)
+        {
+          if (VELO.GR[g].key[k].was_setup)
+          {
+            VELO.GR[g].key[k].isLedDimming = DIMMING;
+            // Serial.println(VELO.GR[g].key[k].isLedDimming);
+            // delay(1000);
+          }
+        }
+      }
+    }
+  }
+
+  //  scan key
   for (uint8_t g = 0; g < 3; g++)
   {
     *(uint8_t *)VELO.GR[g].TRANSISTOR_REG |= (1UL << (VELO.GR[g].TRANSISTOR_POS));
@@ -176,10 +223,10 @@ void loop()
           {
             // Serial.print(millis() - VELO.GR[g].key[k].StartPressingMS);
             // Serial.println("ms");
-
-            if (VELO.GR[g].key[k].Type == KEY_HOTWATER)
+            switch (VELO.GR[g].key[k].Type)
             {
-              if (VELO.STATE != SETUP_STATE || VELO.STATE != TRANFERRING_DATA_STATE)
+            case KEY_HOTWATER:
+              if (VELO.STATE == READY_STATE)
               {
                 if (VELO.GR[g].isHotwaterDispensing == 0)
                 {
@@ -190,20 +237,47 @@ void loop()
                   stop_hotwater_dispensing(g);
                 }
               }
-            }
-            else if (VELO.GR[g].STATE == READY_STATE)
-            {
-              start_extracting(g, k);
-            }
-            else if (VELO.GR[g].isExtracting == k + 1 || k == 4)
-            {
-              stop_extracting(VELO.GR[g].GroupNum, VELO.GR[g].isExtracting - 1);
+              break;
+            case KEY_MANUAL:
+              if (VELO.STATE == SETUP_WATER_STATE)
+              {
+                for (uint8_t gg = 0; gg < 3; gg++)
+                {
+                  for (uint8_t kk = 0; kk < 6; kk++)
+                  {
+                    VELO.GR[gg].key[kk].was_setup = false;
+                  }
+                }
+                VELO.startSetupMs = millis();
+              }
+              else
+              {
+                if (VELO.GR[g].STATE == READY_STATE)
+                {
+                  start_extracting(g, k);
+                }
+                else
+                {
+                  stop_extracting(VELO.GR[g].GroupNum, VELO.GR[g].isExtracting - 1);
+                }
+              }
+              break;
+            default:
+              if (VELO.GR[g].STATE == READY_STATE)
+              {
+                start_extracting(g, k);
+              }
+              else
+              {
+                stop_extracting(VELO.GR[g].GroupNum, VELO.GR[g].isExtracting - 1);
+              }
+              break;
             }
           }
         }
         if (VELO.GR[g].isCleaningPressing)
         {
-          if (VELO.STATE != SETUP_STATE || VELO.STATE != TRANFERRING_DATA_STATE)
+          if (VELO.STATE != SETUP_STATE && VELO.STATE != SETUP_WATER_STATE)
           {
             if (millis() - VELO.GR[g].cleaningPressingStartMS >= 120)
             {
@@ -298,7 +372,24 @@ void loop()
           VELO.GR[g].key[4].StartPressingMS = millis();
           VELO.GR[g].key[4].IsPressing = true;
         }
-
+        if (millis() - VELO.GR[g].key[4].StartPressingMS > 5000)
+        {
+          if (VELO.GR[0].STATE == READY_STATE && VELO.GR[1].STATE == READY_STATE && VELO.GR[2].STATE == READY_STATE)
+          {
+            if (VELO.GR[0].isHotwaterDispensing == 0 && VELO.GR[1].isHotwaterDispensing == 0 && VELO.GR[2].isHotwaterDispensing == 0)
+            {
+              if (VELO.GR[0].isCleaning == 0 && VELO.GR[1].isCleaning == 0 && VELO.GR[2].isCleaning == 0)
+              {
+                if (VELO.STATE != SETUP_WATER_STATE)
+                {
+                  VELO.STATE = SETUP_WATER_STATE;
+                  VELO.startSetupMs = millis();
+                  Serial.println("setup");
+                }
+              }
+            }
+          }
+        }
         break;
       case 0B10000000:
 
@@ -307,39 +398,44 @@ void loop()
           VELO.GR[g].key[5].StartPressingMS = millis();
           VELO.GR[g].key[5].IsPressing = true;
         }
-        if (millis() - VELO.GR[g].key[5].StartPressingMS > 5000)
-        {
-          if (VELO.GR[0].STATE == READY_STATE && VELO.GR[1].STATE == READY_STATE && VELO.GR[2].STATE == READY_STATE)
-          {
-            if (VELO.STATE != SETUP_STATE)
-            {
-              VELO.STATE = SETUP_STATE;
-              VELO.startSetupMs = millis();
-            }
-          }
-        }
+
         break;
       case 0B01000001:
         if (!VELO.GR[g].isCleaningPressing)
         {
-          VELO.GR[g].key[0].StartPressingMS = millis();
+          uint32_t ms = millis();
+          VELO.GR[g].key[0].StartPressingMS = ms;
           VELO.GR[g].key[0].IsPressing = false;
-          VELO.GR[g].key[1].StartPressingMS = millis();
+          VELO.GR[g].key[1].StartPressingMS = ms;
           VELO.GR[g].key[1].IsPressing = false;
-          VELO.GR[g].key[2].StartPressingMS = millis();
+          VELO.GR[g].key[2].StartPressingMS = ms;
           VELO.GR[g].key[2].IsPressing = false;
-          VELO.GR[g].key[3].StartPressingMS = millis();
+          VELO.GR[g].key[3].StartPressingMS = ms;
           VELO.GR[g].key[3].IsPressing = false;
-          VELO.GR[g].key[4].StartPressingMS = millis();
+          VELO.GR[g].key[4].StartPressingMS = ms;
           VELO.GR[g].key[4].IsPressing = false;
-          VELO.GR[g].key[5].StartPressingMS = millis();
+          VELO.GR[g].key[5].StartPressingMS = ms;
           VELO.GR[g].key[5].IsPressing = false;
-          VELO.GR[g].cleaningPressingStartMS = millis();
+          VELO.GR[g].cleaningPressingStartMS = ms;
           VELO.GR[g].isCleaningPressing = true;
         }
-
         break;
       default:
+        uint32_t ms = millis();
+        VELO.GR[g].key[0].StartPressingMS = ms;
+        VELO.GR[g].key[0].IsPressing = false;
+        VELO.GR[g].key[1].StartPressingMS = ms;
+        VELO.GR[g].key[1].IsPressing = false;
+        VELO.GR[g].key[2].StartPressingMS = ms;
+        VELO.GR[g].key[2].IsPressing = false;
+        VELO.GR[g].key[3].StartPressingMS = ms;
+        VELO.GR[g].key[3].IsPressing = false;
+        VELO.GR[g].key[4].StartPressingMS = ms;
+        VELO.GR[g].key[4].IsPressing = false;
+        VELO.GR[g].key[5].StartPressingMS = ms;
+        VELO.GR[g].key[5].IsPressing = false;
+        VELO.GR[g].cleaningPressingStartMS = ms;
+        VELO.GR[g].isCleaningPressing = false;
         break;
       }
       VELO.GR[g].PINF_BUFFER = PINF;
@@ -373,7 +469,15 @@ void start_extracting(uint8_t group, uint8_t key)
   // Serial.println(key);
   VELO.GR[group].STATE = EXTRACTING_STATE;
   VELO.GR[group].isExtracting = key + 1;
-  VELO.GR[group].loadDataNeededForExtracting(key);
+  if (VELO.STATE == SETUP_WATER_STATE)
+  {
+    VELO.startSetupMs = millis(); //refresh setuptime
+  }
+  else
+  {
+    VELO.GR[group].loadDataNeededForExtracting(key);
+  }
+
   for (uint8_t z = 0; z < 5; z++)
   {
     if (z == key)
@@ -398,6 +502,10 @@ void stop_extracting(uint8_t group, uint8_t key)
     // Serial.print(group);
     // Serial.print(" key:");
     // Serial.println(key);
+    if (VELO.STATE == SETUP_WATER_STATE)
+    {
+      VELO.startSetupMs = millis();
+    }
     VELO.GR[group].STATE = READY_STATE;
     VELO.GR[group].isExtracting = 0;
     if (VELO.KEY_LED_NORMAL_STATE)
@@ -424,17 +532,46 @@ void start_hotwater_dispensing(uint8_t group)
 {
   // Serial.print("start hotwater dispensing group:");
   // Serial.println(group);
+  if (VELO.STATE == SETUP_WATER_STATE)
+  {
+    VELO.startSetupMs = millis();
+  }
+  else
+  {
+    for (uint8_t k = 0; k < 6; k++)
+    {
+      if (VELO.GR[group].key[k].Type == KEY_HOTWATER)
+      {
+        VELO.GR[group].NEED_HOT_WATER_TIME = VELO.GR[group].key[k].DATA_HOTWATER_DISPENSING_TIME;
+      }
+    }
+  }
   VELO.GR[group].isHotwaterDispensing = 1;
   VELO.GR[group].hotWaterDispensingStartMS = millis();
   VELO.RELAY_REGISTER |= (1UL << (RELAY_EVTEA));
   VELO.isFillWithpump ? VELO.RELAY_REGISTER |= (1UL << (RELAY_PUMP)) : VELO.null_variable;
+  VELO.GR[group].key[5].isLedDimming = DIMMING;
 }
 void stop_hotwater_dispensing(uint8_t group)
 {
   // Serial.print("stop hotwater dispensing group:");
   // Serial.println(group);
+  if (VELO.STATE == SETUP_WATER_STATE)
+  {
+    VELO.startSetupMs = millis();
+  }
   VELO.GR[group].isHotwaterDispensing = 0;
   VELO.RELAY_REGISTER &= ~(1UL << (RELAY_EVTEA));
+  VELO.GR[group].key[5].isLedDimming = OFF;
+  if (VELO.KEY_LED_NORMAL_STATE == 1)
+  {
+    VELO.GR[group].key[5].ledPower = VELO.KEY_LED_MAX_POWER;
+  }
+  else
+  {
+    VELO.GR[group].key[5].ledPower = 0;
+  }
+
   stop_pump();
 }
 
